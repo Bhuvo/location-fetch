@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}Provider Diagnostics{% endblock %}
+{% block page_title %}Geolocation Accuracy Diagnostics{% endblock %}
+
+{% block head_extra %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #diagMap {
+        height: 420px;
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        z-index: 1;
+    }
+    .badge-confidence-HIGH {
+        background-color: #ecfdf5;
+        color: #059669;
+        border: 1px solid #a7f3d0;
+    }
+    .badge-confidence-MEDIUM {
+        background-color: #fefce8;
+        color: #ca8a04;
+        border: 1px solid #fef08a;
+    }
+    .badge-confidence-LOW {
+        background-color: #fff1f2;
+        color: #e11d48;
+        border: 1px solid #fecdd3;
+    }
+    .badge-confidence-UNKNOWN {
+        background-color: #f1f5f9;
+        color: #64748b;
+        border: 1px solid #cbd5e1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h4 class="fw-bold mb-1">Geolocation Provider Diagnostics & Accuracy Analysis</h4>
+    <p class="text-muted small mb-0">
+        Investigate generic city-centre coordinates, test IP addresses across multiple providers in real-time, and analyze coordinate variance.
+    </p>
+</div>
+
+<!-- Prominent Required Accuracy Disclaimer -->
+<div class="map-disclaimer mb-4">
+    <i class="bi bi-shield-exclamation fs-4"></i>
+    <div>
+        <strong>Accuracy Disclaimer:</strong>
+        <div>
+            IP-based location is an estimate and does not represent the exact physical location of the visitor. Geolocation databases resolve network routing blocks, which frequently map to municipal centroids or telecom exchange points.
+        </div>
+    </div>
+</div>
+
+<!-- Diagnostic Control Card -->
+<div class="dashboard-card mb-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-search text-emerald me-1"></i> Diagnose IP Address Across Multiple Providers</h6>
+    <div class="row g-3 align-items-end">
+        <div class="col-md-5">
+            <label for="diagIpInput" class="form-label small fw-semibold text-secondary">Target Public IP Address</label>
+            <input type="text" id="diagIpInput" class="form-control font-monospace" placeholder="e.g. 81.2.69.142, 103.21.244.0">
+        </div>
+        <div class="col-md-4">
+            <label for="recentIpSelect" class="form-label small fw-semibold text-secondary">Or Select from Consented Visitors</label>
+            <select id="recentIpSelect" class="form-select">
+                <option value="">-- Choose Consented Visitor IP --</option>
+                {% for item in recent_ips %}
+                    <option value="{{ item.ip }}">{{ item.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button id="runDiagBtn" class="btn btn-emerald w-100 d-flex align-items-center justify-content-center gap-2">
+                <i class="bi bi-cpu"></i> Compare Providers
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Spinner -->
+<div id="diagLoading" class="text-center py-5 d-none">
+    <div class="spinner-border text-emerald mb-3" style="width: 2.5rem; height: 2.5rem;" role="status"></div>
+    <h6 class="fw-bold text-dark">Querying Geolocation Providers in Parallel...</h6>
+    <p class="text-muted small mb-0">Capturing IPinfo, ip-api, and MaxMind / ipapi data without averaging coordinates.</p>
+</div>
+
+<!-- Results Container -->
+<div id="diagResults" class="d-none">
+    <!-- Confidence & Centroid Warning Banner -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="dashboard-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small fw-semibold text-secondary text-uppercase">Geolocation Confidence Rating</span>
+                    <span class="badge px-3 py-1 fs-6 fw-bold" id="badgeConfidence">UNKNOWN</span>
+                </div>
+                <div class="text-muted small mb-2" id="confidenceSummary">
+                    Analyzing consensus and coordinate precision...
+                </div>
+                <ul class="small text-muted ps-3 mb-0" id="confidenceReasonsList">
+                    <!-- Reasons dynamically injected -->
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="dashboard-card h-100" id="centroidCard">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi bi-geo-alt-fill text-danger fs-5" id="centroidIcon"></i>
+                    <h6 class="fw-bold mb-0" id="centroidHeader">City-Centre Centroid Analysis</h6>
+                </div>
+                <p class="small text-muted mb-2" id="centroidDetail">
+                    Evaluating coordinate pattern against canonical municipal reference centroids.
+                </p>
+                <div class="small p-2 rounded bg-light border" id="centroidNoteBox">
+                    <i class="bi bi-info-circle me-1"></i>
+                    <span id="centroidNote">Why do coordinates like 13.0878, 80.2785 appear? Regional telecom providers associate broad subnets with city center centroids when neighborhood-level data is unavailable.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Side-by-Side Provider Comparison Table -->
+    <div class="dashboard-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h6 class="fw-bold mb-0">Side-by-Side Provider Output</h6>
+                <span class="text-muted small">Distinct values returned by each provider (coordinates are strictly preserved and never averaged)</span>
+            </div>
+            <span class="badge bg-light text-secondary border" id="varianceBadge">Variance: 0 km</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-custom table-bordered">
+                <thead>
+                    <tr class="table-light">
+                        <th style="width: 180px;">Metric / Field</th>
+                        <th style="width: 27%;">
+                            <span class="badge bg-primary me-1">Provider 1</span> IPinfo
+                        </th>
+                        <th style="width: 27%;">
+                            <span class="badge bg-success me-1">Provider 2</span> ip-api
+                        </th>
+                        <th style="width: 27%;">
+                            <span class="badge bg-purple text-white me-1" style="background-color: #8b5cf6;">Provider 3</span> MaxMind / ipapi
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="comparisonTableBody">
+                    <!-- Injected via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Multi-Provider Comparison Map -->
+    <div class="dashboard-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h6 class="fw-bold mb-0">Multi-Provider Plotted Coordinates (Variance Visualization)</h6>
+                <span class="text-muted small">See how each provider locates this IP independently. Circles represent accuracy radii where available.</span>
+            </div>
+            <div class="d-flex gap-2">
+                <span class="badge bg-primary text-white"><i class="bi bi-geo-alt-fill"></i> IPinfo</span>
+                <span class="badge bg-success text-white"><i class="bi bi-geo-alt-fill"></i> ip-api</span>
+                <span class="badge text-white" style="background-color: #8b5cf6;"><i class="bi bi-geo-alt-fill"></i> MaxMind / ipapi</span>
+            </div>
+        </div>
+        <div id="diagMap"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const diagIpInput = document.getElementById("diagIpInput");
+        const recentIpSelect = document.getElementById("recentIpSelect");
+        const runDiagBtn = document.getElementById("runDiagBtn");
+        const diagLoading = document.getElementById("diagLoading");
+        const diagResults = document.getElementById("diagResults");
+
+        const badgeConfidence = document.getElementById("badgeConfidence");
+        const confidenceSummary = document.getElementById("confidenceSummary");
+        const confidenceReasonsList = document.getElementById("confidenceReasonsList");
+
+        const centroidHeader = document.getElementById("centroidHeader");
+        const centroidDetail = document.getElementById("centroidDetail");
+        const centroidIcon = document.getElementById("centroidIcon");
+        const varianceBadge = document.getElementById("varianceBadge");
+        const comparisonTableBody = document.getElementById("comparisonTableBody");
+
+        let diagMap = null;
+        let markersGroup = null;
+
+        // Sync dropdown selection with IP input
+        recentIpSelect.addEventListener("change", function () {
+            if (this.value) {
+                diagIpInput.value = this.value;
+            }
+        });
+
+        // Check if navigated from visitor record with pre-selected IP
+        const storedIp = sessionStorage.getItem("diag_target_ip");
+        if (storedIp) {
+            diagIpInput.value = storedIp;
+            sessionStorage.removeItem("diag_target_ip");
+            setTimeout(() => runDiagBtn.click(), 100);
+        }
+
+        // Initialize Map
+        function initDiagMap() {
+            if (!diagMap) {
+                diagMap = L.map("diagMap", {
+                    center: [20.0, 0.0],
+                    zoom: 2,
+                    minZoom: 2,
+                    maxZoom: 18,
+                });
+                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                    attribution: '&copy; OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(diagMap);
+                markersGroup = L.layerGroup().addTo(diagMap);
+            }
+        }
+
+        runDiagBtn.addEventListener("click", function () {
+            const ip = diagIpInput.value.trim();
+            if (!ip) {
+                window.showToast("Please enter or select an IP address.", "bg-danger");
+                return;
+            }
+
+            runDiagBtn.disabled = true;
+            diagLoading.classList.remove("d-none");
+            diagResults.classList.add("d-none");
+
+            fetch(`/api/diagnostics/compare?ip=${encodeURIComponent(ip)}`)
+                .then(r => r.json())
+                .then(data => {
+                    runDiagBtn.disabled = false;
+                    diagLoading.classList.add("d-none");
+
+                    if (!data.success) {
+                        window.showToast(data.error || "Diagnostic query failed.", "bg-danger");
+                        return;
+                    }
+
+                    renderDiagnostics(data);
+                })
+                .catch(err => {
+                    runDiagBtn.disabled = false;
+                    diagLoading.classList.add("d-none");
+                    window.showToast("Network error executing diagnostic: " + err.message, "bg-danger");
+                });
+        });
+
+        function renderDiagnostics(data) {
+            diagResults.classList.remove("d-none");
+            initDiagMap();
+
+            // 1. Confidence badge
+            const conf = data.confidence || "UNKNOWN";
+            badgeConfidence.textContent = conf;
+            badgeConfidence.className = `badge px-3 py-1 fs-6 fw-bold badge-confidence-${conf}`;
+            confidenceSummary.textContent = conf === "HIGH" 
+                ? "Multiple independent providers agree with high precision and granular location."
+                : conf === "MEDIUM" 
+                ? "Providers agree on region/city, but coordinates may be an aggregate centroid."
+                : conf === "LOW"
+                ? "Suspiciously generic city-centre fallback or significant provider disagreement detected."
+                : "No valid geographical coordinates could be determined.";
+
+            confidenceReasonsList.innerHTML = (data.confidence_reasons || [])
+                .map(r => `<li>${escapeHtml(r)}</li>`)
+                .join("");
+
+            // 2. City-centre centroid detection
+            if (data.is_city_centre) {
+                centroidHeader.textContent = "Generic City-Centre Centroid Flagged";
+                centroidHeader.className = "fw-bold mb-0 text-danger";
+                centroidIcon.className = "bi bi-exclamation-triangle-fill text-danger fs-5";
+                centroidDetail.innerHTML = `<strong>Warning:</strong> ${escapeHtml(data.city_centre_reason)}.<br>The provider returned a municipal center point (such as Chennai 13.0878, 80.2785), not the visitor's physical device position.`;
+            } else {
+                centroidHeader.textContent = "Non-Centroid Specific Coordinates";
+                centroidHeader.className = "fw-bold mb-0 text-success";
+                centroidIcon.className = "bi bi-check-circle-fill text-success fs-5";
+                centroidDetail.textContent = "Coordinates do not match known generic municipal reference centroids.";
+            }
+
+            // 3. Variance
+            varianceBadge.textContent = `Max Provider Variance: ${data.max_variance_km} km`;
+
+            // 4. Comparison Table
+            renderTable(data.providers);
+
+            // 5. Plotted Map
+            renderMapMarkers(data.providers);
+        }
+
+        function renderTable(providers) {
+            const rows = [
+                { label: "Provider Status", key: "status" },
+                { label: "Response Time", key: "response_time_ms", suffix: " ms" },
+                { label: "City", key: "city" },
+                { label: "Region / State", key: "region" },
+                { label: "Country", key: "country" },
+                { label: "Postal / ZIP Code", key: "postal_code" },
+                { label: "Coordinates (Lat, Lon)", key: "coords" },
+                { label: "Accuracy Radius", key: "accuracy_radius", suffix: " km" },
+                { label: "ISP", key: "isp" },
+                { label: "Organization", key: "organization" },
+                { label: "ASN", key: "asn" },
+            ];
+
+            const p1 = providers.find(p => p.provider === "ipinfo") || {};
+            const p2 = providers.find(p => p.provider === "ip-api") || {};
+            const p3 = providers.find(p => p.provider === "maxmind" || p.provider === "ipapi_co") || {};
+
+            function getVal(p, row) {
+                if (!p.success) {
+                    if (row.key === "status") return '<span class="badge bg-danger">Error / Failed</span>';
+                    return '<span class="text-muted small">N/A</span>';
+                }
+                if (row.key === "status") {
+                    return `<span class="badge bg-success">Success (${p.display_name})</span>`;
+                }
+                if (row.key === "coords") {
+                    if (p.latitude !== null && p.longitude !== null) {
+                        return `<code>${p.latitude.toFixed(4)}, ${p.longitude.toFixed(4)}</code>`;
+                    }
+                    return '<span class="text-muted">Not returned</span>';
+                }
+                const v = p[row.key];
+                if (v === null || v === undefined || v === "") {
+                    return '<span class="text-muted">Not available</span>';
+                }
+                return `<strong>${escapeHtml(v)}</strong>${row.suffix || ""}`;
+            }
+
+            comparisonTableBody.innerHTML = rows.map(r => `
+                <tr>
+                    <td class="fw-semibold text-secondary">${r.label}</td>
+                    <td>${getVal(p1, r)}</td>
+                    <td>${getVal(p2, r)}</td>
+                    <td>${getVal(p3, r)}</td>
+                </tr>
+            `).join("");
+        }
+
+        function renderMapMarkers(providers) {
+            markersGroup.clearLayers();
+            const latLngs = [];
+
+            const providerColors = {
+                "ipinfo": { color: "#3b82f6", label: "IPinfo" },
+                "ip-api": { color: "#10b981", label: "ip-api" },
+                "maxmind": { color: "#8b5cf6", label: "MaxMind" },
+                "ipapi_co": { color: "#8b5cf6", label: "ipapi.co" }
+            };
+
+            providers.forEach(p => {
+                if (p.success && p.latitude !== null && p.longitude !== null) {
+                    const cfg = providerColors[p.provider] || { color: "#f59e0b", label: p.display_name };
+                    
+                    // Pin marker icon
+                    const icon = L.divIcon({
+                        className: "diag-pin",
+                        html: `<div style="width: 16px; height: 16px; background-color: ${cfg.color}; border: 2.5px solid #ffffff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8],
+                        popupAnchor: [0, -10]
+                    });
+
+                    const marker = L.marker([p.latitude, p.longitude], { icon: icon });
+                    marker.bindPopup(`
+                        <div style="font-size: 0.85rem;">
+                            <strong>${cfg.label} Result:</strong><br>
+                            <span>${escapeHtml(p.city)}, ${escapeHtml(p.country)}</span><br>
+                            <code>${p.latitude.toFixed(4)}, ${p.longitude.toFixed(4)}</code>
+                            ${p.accuracy_radius ? `<br><small class="text-muted">Radius: ${p.accuracy_radius} km</small>` : ""}
+                        </div>
+                    `);
+                    markersGroup.addLayer(marker);
+                    latLngs.push([p.latitude, p.longitude]);
+
+                    // Optional accuracy radius circle if provided
+                    if (p.accuracy_radius && p.accuracy_radius > 0) {
+                        const circle = L.circle([p.latitude, p.longitude], {
+                            radius: p.accuracy_radius * 1000,
+                            color: cfg.color,
+                            fillColor: cfg.color,
+                            fillOpacity: 0.12,
+                            weight: 1.5
+                        });
+                        markersGroup.addLayer(circle);
+                    }
+                }
+            });
+
+            if (latLngs.length > 0) {
+                const bounds = L.latLngBounds(latLngs);
+                diagMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 11 });
+            } else {
+                diagMap.setView([20.0, 0.0], 2);
+            }
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return "";
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    });
+</script>
+{% endblock %}

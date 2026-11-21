@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+{% block page_title %}Analytics Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h4 class="fw-bold mb-1">Welcome back, {{ admin_username or 'Admin' }}</h4>
+        <p class="text-muted small mb-0">Overview of consented visitor geolocation and tracking analytics.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('dashboard.links') }}" class="btn btn-emerald d-flex align-items-center gap-2">
+            <i class="bi bi-plus-circle"></i> Create Tracking Link
+        </a>
+        <a href="{{ url_for('dashboard.analytics') }}" class="btn btn-outline-secondary d-flex align-items-center gap-2">
+            <i class="bi bi-map"></i> View Map
+        </a>
+    </div>
+</div>
+
+<!-- KPI Metrics Row -->
+<div class="row g-3 mb-4">
+    <!-- Total Tracking Links -->
+    <div class="col-xl col-md-4 col-sm-6">
+        <div class="dashboard-card kpi-card">
+            <div>
+                <div class="kpi-title">Tracking Links</div>
+                <div class="kpi-value" id="kpiTotalLinks">-</div>
+            </div>
+            <div class="kpi-icon-wrapper kpi-icon-blue">
+                <i class="bi bi-link-45deg"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Total Consent Events -->
+    <div class="col-xl col-md-4 col-sm-6">
+        <div class="dashboard-card kpi-card">
+            <div>
+                <div class="kpi-title">Consent Events</div>
+                <div class="kpi-value text-emerald" id="kpiTotalConsents">-</div>
+            </div>
+            <div class="kpi-icon-wrapper kpi-icon-green">
+                <i class="bi bi-shield-check"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unique IP Addresses -->
+    <div class="col-xl col-md-4 col-sm-6">
+        <div class="dashboard-card kpi-card">
+            <div>
+                <div class="kpi-title">Unique IPs</div>
+                <div class="kpi-value" id="kpiUniqueIps">-</div>
+            </div>
+            <div class="kpi-icon-wrapper kpi-icon-purple">
+                <i class="bi bi-hdd-network"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Countries Detected -->
+    <div class="col-xl col-md-6 col-sm-6">
+        <div class="dashboard-card kpi-card">
+            <div>
+                <div class="kpi-title">Countries</div>
+                <div class="kpi-value" id="kpiCountries">-</div>
+            </div>
+            <div class="kpi-icon-wrapper kpi-icon-amber">
+                <i class="bi bi-globe-americas"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cities Detected -->
+    <div class="col-xl col-md-6 col-sm-12">
+        <div class="dashboard-card kpi-card">
+            <div>
+                <div class="kpi-title">Cities</div>
+                <div class="kpi-value" id="kpiCities">-</div>
+            </div>
+            <div class="kpi-icon-wrapper kpi-icon-cyan">
+                <i class="bi bi-geo-alt"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Charts Row -->
+<div class="row g-4 mb-4">
+    <!-- Timeline Chart -->
+    <div class="col-lg-8">
+        <div class="dashboard-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h6 class="fw-bold mb-0">Visitor Consent Events Timeline</h6>
+                    <span class="text-muted small">Daily consented visits over the last 14 days</span>
+                </div>
+                <span class="badge bg-light text-secondary border">14-Day Trend</span>
+            </div>
+            <div style="height: 280px; position: relative;">
+                <canvas id="timelineChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Country Distribution -->
+    <div class="col-lg-4">
+        <div class="dashboard-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h6 class="fw-bold mb-0">Top Countries</h6>
+                    <span class="text-muted small">Consented visitors by geographic origin</span>
+                </div>
+            </div>
+            <div style="height: 280px; position: relative;">
+                <canvas id="countryChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Secondary Distribution Charts Row -->
+<div class="row g-4 mb-4">
+    <!-- Browser Distribution -->
+    <div class="col-md-6">
+        <div class="dashboard-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h6 class="fw-bold mb-0">Browser Distribution</h6>
+                    <span class="text-muted small">Client browser engines</span>
+                </div>
+            </div>
+            <div style="height: 240px; position: relative;">
+                <canvas id="browserChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Operating System Distribution -->
+    <div class="col-md-6">
+        <div class="dashboard-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h6 class="fw-bold mb-0">Operating Systems</h6>
+                    <span class="text-muted small">Visitor platforms and operating systems</span>
+                </div>
+            </div>
+            <div style="height: 240px; position: relative;">
+                <canvas id="osChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Consented Visits Card -->
+<div class="dashboard-card mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h6 class="fw-bold mb-0">Recent Consented Visits</h6>
+            <span class="text-muted small">Latest visitors who authorized approximate location logging</span>
+        </div>
+        <a href="{{ url_for('dashboard.visitors') }}" class="btn btn-sm btn-outline-secondary">
+            View All Records <i class="bi bi-arrow-right ms-1"></i>
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom">
+            <thead>
+                <tr>
+                    <th>Timestamp (UTC)</th>
+                    <th>Tracking Link</th>
+                    <th>Public IP</th>
+                    <th>Location (Approx)</th>
+                    <th>ISP / Org</th>
+                    <th>Browser / OS</th>
+                </tr>
+            </thead>
+            <tbody id="recentVisitsTable">
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm text-secondary me-2" role="status"></div>
+                        Loading recent records...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<!-- Dashboard Logic JS -->
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

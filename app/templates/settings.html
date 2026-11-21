@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+{% block page_title %}System & Privacy Settings{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h4 class="fw-bold mb-1">System & Privacy Settings</h4>
+    <p class="text-muted small mb-0">Manage data retention policies, privacy parameters, and network proxy trust.</p>
+</div>
+
+<div class="row g-4">
+    <!-- Data Retention Card -->
+    <div class="col-lg-6">
+        <div class="dashboard-card h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-clock-history text-emerald fs-5"></i>
+                <h6 class="fw-bold mb-0">Data Retention Policy</h6>
+            </div>
+            <p class="text-muted small">
+                In compliance with privacy best practices, IPTrace allows automated pruning of stored visitor IP and location records after a configurable number of days.
+            </p>
+
+            <form id="retentionForm" class="mb-4">
+                <div class="mb-3">
+                    <label for="retentionDaysInput" class="form-label small fw-semibold text-secondary">
+                        Retention Threshold (Days)
+                    </label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="retentionDaysInput" min="0" max="3650" required>
+                        <span class="input-group-text bg-light text-muted">days</span>
+                        <button type="submit" class="btn btn-emerald" id="saveRetentionBtn">
+                            Update Policy
+                        </button>
+                    </div>
+                    <div class="form-text small">Enter <code>0</code> to retain records indefinitely without automatic cleanup. Default is 90 days.</div>
+                </div>
+            </form>
+
+            <hr class="my-4">
+
+            <div>
+                <h6 class="fw-bold text-dark mb-2">Manual Retention Purge</h6>
+                <p class="text-muted small mb-3">
+                    Immediately purge all visitor records older than the active retention threshold.
+                </p>
+                <button type="button" class="btn btn-outline-danger d-flex align-items-center gap-2" id="triggerPurgeBtn">
+                    <i class="bi bi-trash3"></i> Purge Expired Records Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security & Proxy Card -->
+    <div class="col-lg-6">
+        <div class="dashboard-card h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-shield-check text-primary fs-5"></i>
+                <h6 class="fw-bold mb-0">Network & Proxy Security</h6>
+            </div>
+            <p class="text-muted small">
+                Status of network header parsing, anti-spoofing validation, and geolocation services.
+            </p>
+
+            <div class="list-group list-group-flush small">
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                    <div>
+                        <div class="fw-semibold">Proxy Headers (X-Forwarded-For)</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">Only processed when behind configured reverse proxies</div>
+                    </div>
+                    <span id="badgeProxyStatus" class="badge bg-light text-secondary border">Loading...</span>
+                </div>
+
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                    <div>
+                        <div class="fw-semibold">Trusted Proxy IP List</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">Authorized upstream gateway addresses</div>
+                    </div>
+                    <span id="badgeTrustedProxies" class="font-monospace text-dark">Loading...</span>
+                </div>
+
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                    <div>
+                        <div class="fw-semibold">IP Geolocation Provider</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">Primary and fallback providers</div>
+                    </div>
+                    <span id="badgeGeoProvider" class="badge bg-light text-secondary border">Loading...</span>
+                </div>
+
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                    <div>
+                        <div class="fw-semibold">Localhost Dev Helper</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">Resolves dev machine public IP for 127.0.0.1 testing</div>
+                    </div>
+                    <span id="badgeDevHelper" class="badge bg-light text-secondary border">Loading...</span>
+                </div>
+            </div>
+
+            <div class="alert alert-light border mt-4 mb-0 small text-muted">
+                <i class="bi bi-info-circle text-primary me-1"></i>
+                To update proxy settings or API credentials, modify the <code>.env</code> file and restart the Flask server.
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const retentionInput = document.getElementById("retentionDaysInput");
+        const retentionForm = document.getElementById("retentionForm");
+        const triggerPurgeBtn = document.getElementById("triggerPurgeBtn");
+
+        const badgeProxyStatus = document.getElementById("badgeProxyStatus");
+        const badgeTrustedProxies = document.getElementById("badgeTrustedProxies");
+        const badgeGeoProvider = document.getElementById("badgeGeoProvider");
+        const badgeDevHelper = document.getElementById("badgeDevHelper");
+
+        // Fetch settings
+        function loadSettings() {
+            fetch("/api/settings")
+                .then(r => r.json())
+                .then(data => {
+                    retentionInput.value = data.data_retention_days;
+                    
+                    if (data.use_proxy_headers) {
+                        badgeProxyStatus.className = "badge bg-success-subtle text-success border border-success-subtle";
+                        badgeProxyStatus.textContent = "Enabled (Trusted Only)";
+                    } else {
+                        badgeProxyStatus.className = "badge bg-secondary-subtle text-secondary border";
+                        badgeProxyStatus.textContent = "Disabled (Direct remote_addr)";
+                    }
+
+                    badgeTrustedProxies.textContent = data.trusted_proxies.length > 0 ? data.trusted_proxies.join(", ") : "None";
+
+                    if (data.has_ipinfo_token) {
+                        badgeGeoProvider.className = "badge bg-success-subtle text-success border border-success-subtle";
+                        badgeGeoProvider.textContent = "IPinfo (Token Active)";
+                    } else {
+                        badgeGeoProvider.className = "badge bg-light text-secondary border";
+                        badgeGeoProvider.textContent = `IPinfo (Public) + ${data.fallback_provider}`;
+                    }
+
+                    if (data.dev_resolve_server_ip) {
+                        badgeDevHelper.className = "badge bg-info-subtle text-info border border-info-subtle";
+                        badgeDevHelper.textContent = "Active (Dev Mode)";
+                    } else {
+                        badgeDevHelper.className = "badge bg-light text-muted border";
+                        badgeDevHelper.textContent = "Inactive";
+                    }
+                })
+                .catch(err => {
+                    console.error("Error loading settings:", err);
+                });
+        }
+
+        loadSettings();
+
+        // Save retention policy
+        retentionForm.addEventListener("submit", function(e) {
+            e.preventDefault();
+            const days = parseInt(retentionInput.value, 10);
+            fetch("/api/settings/retention", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": window.getCSRFToken()
+                },
+                body: JSON.stringify({ days: days })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    window.showToast(data.message, "bg-success");
+                } else {
+                    window.showToast(data.error || "Failed to update retention policy.", "bg-danger");
+                }
+            })
+            .catch(err => {
+                window.showToast("Network error updating retention policy.", "bg-danger");
+            });
+        });
+
+        // Trigger manual purge
+        triggerPurgeBtn.addEventListener("click", function() {
+            if (!confirm("Are you sure you want to purge records older than the configured threshold?")) {
+                return;
+            }
+            triggerPurgeBtn.disabled = true;
+            triggerPurgeBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Purging...';
+
+            fetch("/api/settings/purge", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": window.getCSRFToken()
+                },
+                body: JSON.stringify({})
+            })
+            .then(r => r.json())
+            .then(data => {
+                triggerPurgeBtn.disabled = false;
+                triggerPurgeBtn.innerHTML = '<i class="bi bi-trash3"></i> Purge Expired Records Now';
+                if (data.success) {
+                    window.showToast(data.message, "bg-success");
+                } else {
+                    window.showToast(data.error || "Purge failed.", "bg-danger");
+                }
+            })
+            .catch(err => {
+                triggerPurgeBtn.disabled = false;
+                triggerPurgeBtn.innerHTML = '<i class="bi bi-trash3"></i> Purge Expired Records Now';
+                window.showToast("Network error executing purge.", "bg-danger");
+            });
+        });
+    });
+</script>
+{% endblock %}
