@@ -1,0 +1,9 @@
+[project]
+name = "iptrace"
+version = "1.0.0"
+description = "Advanced IP Geolocation & Visitor Analytics Web Application"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.vercel]
+entrypoint = "run.py"

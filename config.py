@@ -12,12 +12,17 @@ class Config:
     """Base application configuration."""
     SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
     
-    # SQLite Database
-    INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
-    os.makedirs(INSTANCE_DIR, exist_ok=True)
+    # SQLite Database (Uses /tmp on Vercel/serverless environments where filesystem is read-only)
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        INSTANCE_DIR = "/tmp"
+    else:
+        INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+        os.makedirs(INSTANCE_DIR, exist_ok=True)
+
+    default_db_path = os.path.join(INSTANCE_DIR, "iptrace.db")
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL", 
-        f"sqlite:///{os.path.join(INSTANCE_DIR, 'iptrace.db')}"
+        f"sqlite:///{default_db_path}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
