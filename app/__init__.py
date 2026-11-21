@@ -64,11 +64,34 @@ def create_app(config_class=Config):
             "admin_username": session.get("admin_username"),
         }
 
-    # Automatically create tables and seed default admin user on startup
+    # Reverse proxy support in serverless / cloud deployments
+    if any(os.getenv(k) for k in ("VERCEL", "VERCEL_ENV", "AWS_LAMBDA_FUNCTION_NAME")):
+        try:
+            from werkzeug.middleware.proxy_fix import ProxyFix
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+        except Exception:
+            pass
+
+    # Ensure database is safely initialized on startup
     with app.app_context():
-        db.create_all()
-        _migrate_database(app)
-        _seed_initial_admin(app)
+        try:
+            db.create_all()
+            _migrate_database(app)
+            _seed_initial_admin(app)
+        except Exception as e:
+            app.logger.warning(f"Initial DB bootstrap warning: {e}")
+
+    # Ensure tables exist on cold-start worker invocations
+    @app.before_request
+    def ensure_database_ready():
+        if not getattr(app, "_db_initialized", False):
+            try:
+                db.create_all()
+                _migrate_database(app)
+                _seed_initial_admin(app)
+                app._db_initialized = True
+            except Exception as e:
+                app.logger.warning(f"On-demand DB check warning: {e}")
 
     return app
 

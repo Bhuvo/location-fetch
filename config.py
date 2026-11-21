@@ -1,5 +1,6 @@
 import os
 import secrets
+import tempfile
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -8,22 +9,62 @@ load_dotenv()
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
+def _determine_instance_dir() -> str:
+    """
+    Safely determine a writable instance directory for SQLite and runtime files.
+    Serverless platforms (Vercel, AWS Lambda) mount the code as read-only (/var/task),
+    leaving only /tmp writable.
+    """
+    # 1. Check known serverless environment indicators
+    serverless_flags = (
+        "VERCEL",
+        "VERCEL_ENV",
+        "AWS_LAMBDA_FUNCTION_NAME",
+        "LAMBDA_TASK_ROOT",
+        "NOW_REGION",
+    )
+    if any(os.getenv(flag) for flag in serverless_flags):
+        return "/tmp"
+
+    # 2. Check if the code path is inside an AWS Lambda / Vercel container
+    if "/var/task" in BASE_DIR or "/var/runtime" in BASE_DIR:
+        return "/tmp"
+
+    # 3. Otherwise try creating local instance directory with graceful fallback
+    target = os.path.join(BASE_DIR, "instance")
+    try:
+        os.makedirs(target, exist_ok=True)
+        # Verify write permission
+        test_file = os.path.join(target, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return target
+    except (OSError, PermissionError):
+        # Fallback to system temp folder (/tmp on Linux/Vercel)
+        return tempfile.gettempdir()
+
+
 class Config:
     """Base application configuration."""
     SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
     
-    # SQLite Database (Uses /tmp on Vercel/serverless environments where filesystem is read-only)
-    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
-        INSTANCE_DIR = "/tmp"
-    else:
-        INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
-        os.makedirs(INSTANCE_DIR, exist_ok=True)
-
+    # Safe writable directory for SQLite
+    INSTANCE_DIR = _determine_instance_dir()
     default_db_path = os.path.join(INSTANCE_DIR, "iptrace.db")
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL", 
-        f"sqlite:///{default_db_path}"
-    )
+
+    # Format SQLite URI properly for Linux/Unix (sqlite:////tmp/iptrace.db)
+    if default_db_path.startswith("/"):
+        _default_sqlite_uri = f"sqlite:////{default_db_path.lstrip('/')}"
+    else:
+        _default_sqlite_uri = f"sqlite:///{default_db_path}"
+
+    # Handle postgres:// vs postgresql:// compatibility if external DB is configured
+    _raw_db_url = os.getenv("DATABASE_URL")
+    if _raw_db_url and _raw_db_url.startswith("postgres://"):
+        _raw_db_url = _raw_db_url.replace("postgres://", "postgresql://", 1)
+
+    SQLALCHEMY_DATABASE_URI = _raw_db_url or _default_sqlite_uri
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Session Security
