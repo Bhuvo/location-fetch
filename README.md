@@ -1,5 +1,6 @@
 # 🌐 IPTrace – Advanced IP Geolocation & Visitor Analytics
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-location--fetch--3fcp.vercel.app-black.svg?logo=vercel&logoColor=white)](https://location-fetch-3fcp.vercel.app)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.15-blue.svg?logo=python&logoColor=white)](https://python.org)
 [![Framework](https://img.shields.io/badge/Framework-Flask%203.x-lightgrey.svg?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Database](https://img.shields.io/badge/Database-SQLite%20%2F%20SQLAlchemy-green.svg?logo=sqlite&logoColor=white)](https://sqlite.org)
@@ -7,6 +8,13 @@
 [![Charts](https://img.shields.io/badge/Charts-Chart.js%204.x-orange.svg?logo=chartdotjs&logoColor=white)](https://chartjs.org)
 [![Tests](https://img.shields.io/badge/Tests-40%20Passed%20(100%25)-success.svg?logo=pytest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
+
+> 🚀 **Live Production Deployment**: **[https://location-fetch-3fcp.vercel.app](https://location-fetch-3fcp.vercel.app)**
+>
+> **Default Admin Credentials**:
+> - **Login Portal**: [https://location-fetch-3fcp.vercel.app/admin/login](https://location-fetch-3fcp.vercel.app/admin/login)
+> - **Username**: `admin`
+> - **Password**: `AdminSecurePass123!`
 
 **IPTrace** is a full-stack, enterprise-grade IP Geolocation & Visitor Analytics web application built with Python, Flask, SQLite, and vanilla frontend technologies (HTML5, CSS3, ES6 JavaScript, Bootstrap 5, Chart.js, and Leaflet.js).
 
@@ -16,6 +24,7 @@ It empowers administrators to generate unique tracking links, capture public IP 
 
 ## 📑 Table of Contents
 
+- [Live Deployment](#-live-deployment)
 - [Key Features](#-key-features)
 - [Why IP Geolocation Returns City Centroids (e.g. Chennai 13.0878, 80.2785)](#-why-ip-geolocation-returns-city-centroids)
 - [Tech Stack](#-tech-stack)
@@ -24,6 +33,7 @@ It empowers administrators to generate unique tracking links, capture public IP 
   - [Prerequisites](#prerequisites)
   - [Installation on Windows](#installation-on-windows)
   - [Installation on Linux / macOS](#installation-on-linux--macos)
+- [Deploying to Vercel](#-deploying-to-vercel)
 - [Configuration (.env)](#-configuration-env)
 - [Multi-Provider Geolocation & Diagnostic Mode](#-multi-provider-geolocation--diagnostic-mode)
 - [Network Testing Environments](#-network-testing-environments)
@@ -31,6 +41,16 @@ It empowers administrators to generate unique tracking links, capture public IP 
 - [REST API Reference](#-rest-api-reference)
 - [Security & Privacy Architecture](#-security--privacy-architecture)
 - [License & Ethical Disclaimer](#-license--ethical-disclaimer)
+
+---
+
+## 🚀 Live Deployment
+
+The application is deployed and hosted on **Vercel Serverless Functions**:
+
+- **Production URL**: [https://location-fetch-3fcp.vercel.app](https://location-fetch-3fcp.vercel.app)
+- **Admin Login**: [https://location-fetch-3fcp.vercel.app/admin/login](https://location-fetch-3fcp.vercel.app/admin/login)
+- **GitHub Repository**: [https://github.com/Bhuvo/location-fetch](https://github.com/Bhuvo/location-fetch)
 
 ---
 
@@ -127,6 +147,8 @@ location-fetch/
 │       ├── diagnostics.html   # Multi-provider comparison & variance view
 │       ├── settings.html      # System retention and proxy configuration view
 │       └── tracking.html      # Public visitor tracking confirmation view
+├── api/
+│   └── index.py               # Vercel serverless function entrypoint
 ├── instance/
 │   └── iptrace.db             # SQLite database file (created on launch)
 ├── tests/
@@ -139,13 +161,39 @@ location-fetch/
 │   ├── test_analytics_and_visitors.py # Filtering, pagination, CSV export, retention tests
 │   ├── test_rate_limiting.py  # Public endpoint rate limiting tests
 │   └── test_e2e.py            # Complete end-to-end user lifecycle test
-├── config.py                  # Base Config and TestConfig
-├── run.py                     # Entry point for running the web application
+├── app.py                     # Universal WSGI entrypoint alias
+├── config.py                  # Base Config and TestConfig (with safe serverless /tmp fallback)
+├── run.py                     # Local development entry point
+├── pyproject.toml             # Project metadata, Vercel entrypoint & PEP 621 dependencies
 ├── requirements.txt           # Python package dependencies
 ├── .env.example               # Environment variables template
 ├── .env                       # Local environment variables
 └── README.md                  # Project documentation
 ```
+
+---
+
+## ☁️ Deploying to Vercel
+
+IPTrace is pre-configured for zero-friction deployment to **Vercel Serverless Functions**:
+
+1. **Push your code to GitHub**:
+   ```bash
+   git push origin main
+   ```
+2. **Import into Vercel**:
+   - Go to [vercel.com](https://vercel.com) and click **"Add New Project"**.
+   - Select your `location-fetch` repository.
+   - Framework Preset: **Other** (Vercel automatically detects Python via `pyproject.toml` and `tool.vercel.entrypoint = "run:app"`).
+3. **Configure Environment Variables** *(Optional in Project Settings)*:
+   - `ADMIN_USERNAME`: Custom admin username (default: `admin`).
+   - `ADMIN_PASSWORD`: Custom secure password (default: `AdminSecurePass123!`).
+   - `SECRET_KEY`: Custom secret key for session signing.
+   - `USE_PROXY_HEADERS`: Set to `True` for Vercel edge reverse proxy client IP resolution.
+   - `IPINFO_API_TOKEN`: Optional API key for IPinfo.
+4. **Deploy**:
+   - Click **Deploy**. Vercel will install dependencies via `uv`, configure WSGI routing, and deploy your live URL.
+   - Data is stored in `/tmp/iptrace.db` on serverless execution, and automatically initializes on first request.
 
 ---
 
